@@ -23,6 +23,8 @@ app.post('/fundraiser/register' , registerFundraiser)
 app.post('/user/sendResetPasswordLink', sendResetPasswordLink)
 app.post('/user/reset-password/:token' , resetPassword)
 
-app.listen(5000 , (sj) => {
+const PORT = process.env.PORT || 5000; 
+
+app.listen(port , () => {
     console.log('App is running on port 5000')
 })
