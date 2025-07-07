@@ -6,10 +6,17 @@ const { loginUser, registerUser, sendResetPasswordLink, resetPassword, logoutUse
 const { loginFundraiser, registerFundraiser } = require('./controllers/raiserConrtoller')
 const app = express()
 
-app.use(cors({
-    origin: process.env.FRONTEND_URL, // Your Next.js frontend URL
-    credentials: true, // Allow cookies to be sent
-  }));
+const corsOptions = {
+  origin: process.env.FRONTEND_URL, 
+  methods: 'GET,HEAD,PUT,PATCH,POST,DELETE', //
+  credentials: true, 
+  optionsSuccessStatus: 204 
+};
+app.use(cors(corsOptions));
+
+app.use(express.json()); 
+
+
 connectDb()
 app.use(express.json())
 
