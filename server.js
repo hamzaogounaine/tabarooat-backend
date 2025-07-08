@@ -4,6 +4,7 @@ const cors = require('cors')
 const connectDb = require('./config/db')
 const { loginUser, registerUser, sendResetPasswordLink, resetPassword, logoutUser, verifyEmail, resendVerification } = require('./controllers/userController')
 const { loginFundraiser, registerFundraiser } = require('./controllers/raiserConrtoller')
+const { limitLoginMiddleware } = require('./middlewares/loginMiddleware')
 const app = express()
 
 const corsOptions = {
@@ -20,7 +21,7 @@ app.use(express.json());
 connectDb()
 app.use(express.json())
 
-app.post('/user/login' , loginUser);
+app.post('/user/login' ,limitLoginMiddleware, loginUser);
 app.post('/user/register', registerUser)
 app.post('/user/logout' , logoutUser)
 app.get('/user/verify-email', verifyEmail)

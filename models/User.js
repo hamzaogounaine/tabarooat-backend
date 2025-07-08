@@ -22,18 +22,13 @@ const userSchema = mongoose.Schema({
         type : Number,
         required : true
     },
-    resetToken: {
-        type: String,
-        default: null
-    },
-    resetTokenExpire: {
-        type: Date,
-        default: null
-    },
+    resetToken: String,
+    resetTokenExpire: Date,
     isVerified :{
         type : Boolean,
         default : false
     },
+    lastLoginIp : String,   
     emailVerificationToken : String,
     emailVerificationTokenExpire : Date,
     termsAccepted : {

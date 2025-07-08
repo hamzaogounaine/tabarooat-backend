@@ -4,6 +4,9 @@ const jwt = require("jsonwebtoken");
 const nodemailer = require("nodemailer");
 const crypto = require("crypto");
 const { serialize } = require("cookie");
+const Redis = require('ioredis')
+
+const redis = new Redis();
 
 
 const transporter = nodemailer.createTransport({
@@ -200,76 +203,102 @@ const verifyEmail = async (req , res) => {
 }
 
 const loginUser = async (req, res) => {
-    try {
+  const block_time = 60 * 5; // Duration in seconds (5 minutes) for blocking an IP
+
+  try {
       const { email, password } = req.body;
 
+      // Helper function to increment Redis counter on failed attempts
+      const incrementFailedAttempts = async () => {
+          const current = await redis.incr(req.rateLimitKey);
+          // If this is the first failed attempt, set an expiry for the key
+          if (current === 1) {
+              await redis.expire(req.rateLimitKey, block_time);
+          }
+      };
+
+      // 1. Validate required fields
       if (!email || !password) {
-        return res.status(400).json({ message: "جميع الحقول مطلوبة" });
+          await incrementFailedAttempts(); // Increment on missing fields
+          return res.status(400).json({ message: "جميع الحقول مطلوبة" });
       }
 
+      // 2. Find the user by email
       const existingUser = await User.findOne({ email });
 
       if (!existingUser) {
-        return res.status(401).json({ message: "الإيميل أو كلمة السر غلط" });
+          await incrementFailedAttempts(); // Increment on non-existent user
+          return res.status(401).json({ message: "الإيميل أو كلمة السر غلط" });
       }
 
+      // 3. Validate password
       const validPassword = await bcrypt.compare(password, existingUser.password);
 
       if (!validPassword) {
-        return res.status(401).json({ message: "الإيميل أو كلمة السر غلط" });
+          await incrementFailedAttempts(); // Increment on wrong password
+          return res.status(401).json({ message: "الإيميل أو كلمة السر غلط" });
       }
 
-      // --- Check if user is not verified and send new verification email ---
+      // 4. Check if user is verified
       if (!existingUser.isVerified) {
-          // Generate a new token and update user, in case the old one expired
+          await incrementFailedAttempts(); // Increment on unverified user trying to log in
+
+          // Generate a new verification token and update user
           const newVerificationToken = crypto.randomBytes(32).toString("hex");
           existingUser.emailVerificationToken = newVerificationToken;
           existingUser.emailVerificationTokenExpire = new Date(Date.now() + 3600000); // 1 hour validity
           await existingUser.save(); // Save the user with the new token
 
-          // Call the helper function to send the new verification email
+          // Send a new verification email
           await sendVerificationEmailHelper(existingUser);
 
           return res.status(401).json({
               message: "يرجى تفعيل بريدك الإلكتروني لتتمكن من تسجيل الدخول. تم إرسال رابط تحقق جديد إلى بريدك الإلكتروني.",
-              // Removed `verification: true` as the message implies it and the frontend can react to this message.
-              // Or you can keep `verification: true` if your frontend specifically relies on it.
-              // For simplicity, let's just rely on the message.
           });
       }
-      // --- End verification check ---
 
+
+    existingUser.lastLoginIp = req.ip;
+      await existingUser.save()
+      // If all checks pass, the login is successful.
+      // Clear the rate limit key for this IP.
+      await redis.del(req.rateLimitKey);
+
+      // 5. Generate JWT token
       const token = jwt.sign(
-        { userId: existingUser._id, email: existingUser.email, type: "user" },
-        process.env.JWT_SECRET,
-        { expiresIn: "2h" } // JWT expires in 2 hours
+          { userId: existingUser._id, email: existingUser.email, type: "user" },
+          process.env.JWT_SECRET,
+          { expiresIn: "2h" } // JWT expires in 2 hours
       );
 
+      // 6. Set JWT as an HttpOnly cookie
       res.setHeader(
-        "Set-Cookie",
-        serialize("token", token, {
-          httpOnly: true,
-          secure: process.env.NODE_ENV === "production" ? true : false,
-          sameSite: "strict",
-          maxAge: 7200, // Now matches the JWT expiry
-          path: "/",
-        })
+          "Set-Cookie",
+          serialize("token", token, {
+              httpOnly: true, // Prevents client-side JavaScript from accessing the cookie
+              secure: process.env.NODE_ENV === "production", // Only send over HTTPS in production
+              sameSite: "strict", // Protects against CSRF attacks
+              maxAge: 7200, // Matches the JWT expiry (2 hours in seconds)
+              path: "/", // Cookie is valid for all paths
+          })
       );
 
+      // 7. Send successful login response
       return res.status(200).json({
-        token,
-        user: {
-          id: existingUser._id,
-          email: existingUser.email,
-          firstName: existingUser.firstName,
-          lastName: existingUser.lastName,
-        },
+          token,
+          user: {
+              id: existingUser._id,
+              email: existingUser.email,
+              firstName: existingUser.firstName,
+              lastName: existingUser.lastName,
+          },
       });
-    } catch (error) {
+  } catch (error) {
       console.error("Login error:", error);
+      // Do NOT increment Redis here, as this is a server-side error, not a user-induced failed attempt.
       return res.status(500).json({ message: "حدث خطأ في الخادم" });
-    }
-  };
+  }
+};
 
 const logoutUser = async (req, res) => {
   try {
