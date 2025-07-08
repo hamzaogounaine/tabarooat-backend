@@ -6,7 +6,7 @@ const crypto = require("crypto");
 const { serialize } = require("cookie");
 const Redis = require('ioredis')
 
-const redis = new Redis();
+const redis = new Redis('redis://127.0.0.1:6379');
 
 
 const transporter = nodemailer.createTransport({
