@@ -9,10 +9,7 @@ const UAParser = require('ua-parser-js');
 
 
 const redis = new Redis(process.env.REDISCLOUD_URL || "redis://127.0.0.1:6379");
-const userAgent = req.headers['user-agent'] || 'Unknown';
-const parser = new UAParser(userAgent);
-const browser = parser.getBrowser();
-const device = parser.getDevice();
+
 
 
 const transporter = nodemailer.createTransport({
@@ -213,7 +210,10 @@ const verifyEmail = async (req, res) => {
 
 const loginUser = async (req, res) => {
   const block_time = 60 * 5; // Duration in seconds (5 minutes) for blocking an IP
-
+  const userAgent = req.headers['user-agent'] || 'Unknown';
+  const parser = new UAParser(userAgent);
+  const browser = parser.getBrowser();
+  const device = parser.getDevice();
   try {
     const { email, password } = req.body;
 
