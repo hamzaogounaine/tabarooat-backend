@@ -5,6 +5,8 @@ const nodemailer = require("nodemailer");
 const crypto = require("crypto");
 const { serialize } = require("cookie");
 const Redis = require("ioredis");
+const UAParser = require('ua-parser-js');
+
 
 const redis = new Redis(process.env.REDISCLOUD_URL || "redis://127.0.0.1:6379");
 
