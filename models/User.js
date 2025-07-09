@@ -28,7 +28,11 @@ const userSchema = mongoose.Schema({
         type : Boolean,
         default : false
     },
-    lastLoginIp : String,   
+    lastLoginIp : String,
+    lastUsedDevice : String,
+    lastUsedBrowser: String ,
+    verificationCode : String,
+    verificationCodeExpire : Date,
     emailVerificationToken : String,
     emailVerificationTokenExpire : Date,
     termsAccepted : {
