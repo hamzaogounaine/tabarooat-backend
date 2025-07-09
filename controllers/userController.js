@@ -44,7 +44,6 @@ if (process.env.NODE_ENV !== "production" && !process.env.MAILTRAP_USER) {
     })
     .catch(console.error);
 }
-// --- End Centralized Transporter Setup ---
 
 // --- Helper Function for Sending Verification Email ---
 const sendVerificationEmailHelper = async (user) => {
@@ -94,6 +93,60 @@ const sendVerificationEmailHelper = async (user) => {
         هذا الرابط صالح لمدة ساعة واحدة فقط.
 
         إذا لم تقم بإنشاء حساب في منصة التبرعات، يرجى تجاهل هذه الرسالة.
+    `,
+  };
+
+  await transporter.sendMail(mailOptions);
+};
+
+const sendDeviceVerificationCodeEmail = async (user, verificationCode) => {
+ 
+  const emailTemplate = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+        <div style="background-color: #f8f9fa; padding: 20px; border-radius: 10px; text-align: center;">
+            <h2 style="color: #333; margin-bottom: 20px;">رمز التحقق من الجهاز الجديد</h2>
+            <p style="color: #666; font-size: 16px; line-height: 1.6;">
+                مرحباً بك،
+                <br>
+                لقد اكتشفنا محاولة تسجيل دخول من جهاز أو عنوان IP جديد لحسابك.
+                <br>
+                لإكمال تسجيل الدخول، يرجى إدخال رمز التحقق التالي:
+            </p>
+            <div style="margin: 30px 0;">
+                <p style="background-color: #007bff; color: white; padding: 15px 30px;
+                          text-decoration: none; border-radius: 5px; font-weight: bold;
+                          font-size: 24px; display: inline-block; letter-spacing: 3px;">
+                    ${verificationCode}
+                </p>
+            </div>
+            <p style="color: #999; font-size: 14px;">
+                هذا الرمز صالح لمدة 10 دقائق فقط.
+            </p>
+            <p style="color: #999; font-size: 14px;">
+                إذا لم تكن أنت من يحاول تسجيل الدخول، يرجى تجاهل هذه الرسالة وتغيير كلمة السر الخاصة بك على الفور.
+            </p>
+        </div>
+    </div>
+  `;
+
+  const mailOptions = {
+    from: process.env.FROM_EMAIL || "noreply@tabaroaat.com",
+    to: user.email,
+    subject: "رمز التحقق من الجهاز الجديد - منصة التبرعات",
+    html: emailTemplate,
+    text: `
+        رمز التحقق من الجهاز الجديد
+
+        مرحباً بك،
+
+        لقد اكتشفنا محاولة تسجيل دخول من جهاز أو عنوان IP جديد لحسابك.
+        لإكمال تسجيل الدخول، يرجى إدخال رمز التحقق التالي:
+
+        ${verificationCode}
+
+        هذا الرمز صالح لمدة 10 دقائق فقط.
+
+        إذا لم تكن أنت من يحاول تسجيل الدخول، يرجى تجاهل هذه الرسالة وتغيير كلمة السر الخاصة بك على الفور.
     `,
   };
 
@@ -214,38 +267,42 @@ const loginUser = async (req, res) => {
   const parser = new UAParser(userAgent);
   const browser = parser.getBrowser();
   const device = parser.getDevice();
+
   try {
     const { email, password } = req.body;
 
     // Helper function to increment Redis counter on failed attempts
     const incrementFailedAttempts = async () => {
-      const current = await redis.incr(req.rateLimitKey);
-      // If this is the first failed attempt, set an expiry for the key
-      if (current === 1) {
-        await redis.expire(req.rateLimitKey, block_time);
+      // Ensure req.rateLimitKey is set by a preceding middleware (e.g., for IP-based rate limiting)
+      if (req.rateLimitKey) {
+        const current = await redis.incr(req.rateLimitKey);
+        // If this is the first failed attempt, set an expiry for the key
+        if (current === 1) {
+          await redis.expire(req.rateLimitKey, block_time);
+        }
       }
     };
 
     // 1. Validate required fields
     if (!email || !password) {
-      await incrementFailedAttempts(); // Increment on missing fields
-      return res.status(400).json({ message: "جميع الحقول مطلوبة" });
+      await incrementFailedAttempts();
+      return res.status(400).json({ message: "جميع الحقول مطلوبة" }); // All fields are required
     }
 
     // 2. Find the user by email
     const existingUser = await User.findOne({ email });
 
     if (!existingUser) {
-      await incrementFailedAttempts(); // Increment on non-existent user
-      return res.status(401).json({ message: "الإيميل أو كلمة السر غلط" });
+      await incrementFailedAttempts();
+      return res.status(401).json({ message: "الإيميل أو كلمة السر غلط" }); // Email or password is wrong
     }
 
     // 3. Validate password
     const validPassword = await bcrypt.compare(password, existingUser.password);
 
     if (!validPassword) {
-      await incrementFailedAttempts(); // Increment on wrong password
-      return res.status(401).json({ message: "الإيميل أو كلمة السر غلط" });
+      await incrementFailedAttempts();
+      return res.status(401).json({ message: "الإيميل أو كلمة السر غلط" }); // Email or password is wrong
     }
 
     // 4. Check if user is verified
@@ -255,33 +312,55 @@ const loginUser = async (req, res) => {
       // Generate a new verification token and update user
       const newVerificationToken = crypto.randomBytes(32).toString("hex");
       existingUser.emailVerificationToken = newVerificationToken;
-      existingUser.emailVerificationTokenExpire = new Date(
-        Date.now() + 3600000
-      ); // 1 hour validity
-      await existingUser.save(); // Save the user with the new token
+      existingUser.emailVerificationTokenExpire = new Date(Date.now() + 3600000); // 1 hour validity
+      await existingUser.save();
 
       // Send a new verification email
       await sendVerificationEmailHelper(existingUser);
 
       return res.status(401).json({
         message:
-          "يرجى تفعيل بريدك الإلكتروني لتتمكن من تسجيل الدخول. تم إرسال رابط تحقق جديد إلى بريدك الإلكتروني.",
+          "يرجى تفعيل بريدك الإلكتروني لتتمكن من تسجيل الدخول. تم إرسال رابط تحقق جديد إلى بريدك الإلكتروني.", // Please activate your email to log in. A new verification link has been sent to your email.
       });
     }
 
+    // --- New Device/IP Login Flow ---
+    // If the last login IP doesn't match the current IP, initiate a new device verification
+    if (existingUser.lastLoginIp !== req.ip) {
+      // Generate a cryptographically secure 6-digit code
+      const randomNumber = crypto.randomBytes(3).readUIntBE(0, 3);
+      const verificationCode = String(randomNumber % 1000000).padStart(6, '0');
+
+      existingUser.verificationCode = verificationCode;
+      existingUser.verificationCodeExpire = Date.now() + 1000 * 60 * 10;
+      await sendDeviceVerificationCodeEmail(existingUser , verificationCode)
+      await existingUser.save();
+
+      return res.status(200).json({
+        message: "تم الكشف عن جهاز أو عنوان IP جديد. تم إرسال رمز تحقق إلى بريدك الإلكتروني.", // New device or IP detected. A verification code has been sent to your email.
+        requiresVerificationCode: true,
+        email: existingUser.email
+      });
+    }
+
+    // If all checks pass and it's not a new device, proceed with standard login
+    // Clear the rate limit key for this IP on successful login.
+    if (req.rateLimitKey) {
+        await redis.del(req.rateLimitKey);
+    }
+
+    // Update last login details
     existingUser.lastLoginIp = req.ip;
-    existingUser.lastUsedDevice = device
-    existingUser.lastUsedBrowser = browser
-    await existingUser.save();
-    // If all checks pass, the login is successful.
-    // Clear the rate limit key for this IP.
-    await redis.del(req.rateLimitKey);
+    existingUser.lastUsedDevice = device;
+    existingUser.lastUsedBrowser = browser;
+    
+    await existingUser.save(); // Save the updated user details
 
     // 5. Generate JWT token
     const token = jwt.sign(
       { userId: existingUser._id, email: existingUser.email, type: "user" },
       process.env.JWT_SECRET,
-      { expiresIn: "2h" } // JWT expires in 2 hours
+      { expiresIn: "5h" } // JWT expires in 2 hours
     );
 
     // 6. Set JWT as an HttpOnly cookie
@@ -309,9 +388,10 @@ const loginUser = async (req, res) => {
   } catch (error) {
     console.error("Login error:", error);
     // Do NOT increment Redis here, as this is a server-side error, not a user-induced failed attempt.
-    return res.status(500).json({ message: "حدث خطأ في الخادم" });
+    return res.status(500).json({ message: "حدث خطأ في الخادم" }); // Server error occurred
   }
 };
+
 
 const logoutUser = async (req, res) => {
   try {
@@ -524,6 +604,142 @@ const resendVerification = async (req, res) => {
   }
 };
 
+
+const checkLoginStatus = (req, res) => {
+  try {
+    // 1. Get the token from the request cookies
+    // Assumes 'cookie-parser' middleware is being used to populate req.cookies
+    const token = req.cookies.token;
+
+    // 2. If no token is found, the user is not logged in
+    if (!token) {
+      console.log('Check Login Status: No token found.');
+      return res.status(200).json({ isLoggedIn: false, message: 'No token provided.' });
+    }
+
+    // 3. Verify the token using the secret key
+    // process.env.JWT_SECRET must be defined in your .env file
+    // The jwt.verify method will throw an error if the token is invalid or expired.
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
+    // 4. If verification is successful, the user is logged in
+    // You can return some decoded user information (e.g., userId, email)
+    console.log('Check Login Status: Token valid, user logged in.');
+    return res.status(200).json({
+      isLoggedIn: true,
+      user: {
+        userId: decoded.userId,
+        email: decoded.email,
+        type: decoded.type,
+        // Add any other claims you put in your JWT payload
+      },
+      message: 'User is logged in.'
+    });
+
+  } catch (error) {
+    // 5. If verification fails (e.g., token expired, invalid signature), the user is not logged in
+    console.error('Check Login Status: Token verification failed:', error.message);
+
+    // If the token is expired or invalid, send isLoggedIn: false
+    // You might also want to clear the invalid cookie on the client side,
+    // or send a response header to clear it if this is an API endpoint.
+    // For a simple status check, just reporting false is often enough.
+    
+    // To clear the cookie from the server side for an invalid token:
+    res.clearCookie('token', {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "strict",
+      path: "/",
+    });
+
+    return res.status(200).json({
+      isLoggedIn: false,
+      message: `Authentication failed: ${error.message}. Token cleared.`,
+      error: error.message
+    });
+  }
+};
+
+
+const checkDeviceVerificationCode = async(req , res) => {
+  const {email , code} = req.body;
+
+  try {
+    // 1. Find the user and verify the code and its expiration in one query
+    const user = await User.findOne({
+      email,
+      verificationCode: code,
+      verificationCodeExpire : { $gt : new Date() } // Check if the code is still valid (greater than current date)
+    });
+
+    if (!user) {
+      // If no user is found with the given email, code, and valid expiration
+      return res
+        .status(400)
+        .json({ message: "الرمز غير صالح أو منتهي الصلاحية" });
+    }
+
+    // 2. Clear the verification code and its expiration from the user document
+    // This makes the code single-use
+    user.verificationCode = undefined; // Remove the field
+    user.verificationCodeExpire = undefined; // Remove the field
+
+    // Update last login details after successful device verification
+    // Ensure req.ip is available (e.g., via Express middleware)
+    // If this is a Next.js API route, req.ip might be undefined; you'd need to parse from headers like 'x-forwarded-for'
+    user.lastLoginIp = req.ip; // Assuming req.ip is correctly populated by your server setup
+
+    const userAgent = req.headers['user-agent'] || 'Unknown';
+    const parser = new UAParser(userAgent);
+    const browser = parser.getBrowser();
+    const device = parser.getDevice();
+    user.lastUsedDevice = device;
+    user.lastUsedBrowser = browser;
+
+    await user.save(); // Save the updated user document
+
+    // 3. Generate JWT token
+    const token = jwt.sign(
+      { userId: user._id, email: user.email, type: "user" },
+      process.env.JWT_SECRET,
+      { expiresIn: "5h" } // JWT expires in 5 hours
+    );
+
+    // 4. Calculate cookie maxAge to match JWT expiresIn
+    const fiveHoursInSeconds = 5 * 60 * 60; // 18000 seconds
+
+    // 5. Set JWT as an HttpOnly cookie
+    res.setHeader(
+      "Set-Cookie",
+      serialize("token", token, {
+        httpOnly: true, // Prevents client-side JavaScript from accessing the cookie
+        secure: process.env.NODE_ENV === "production", // Only send over HTTPS in production
+        sameSite: "strict", // Protects against CSRF attacks
+        maxAge: fiveHoursInSeconds, // Matches the JWT expiry (5 hours in seconds)
+        path: "/", // Cookie is valid for all paths
+      })
+    );
+
+    // 6. Send successful login response
+    return res.status(200).json({
+      message: "تم التحقق من الجهاز بنجاح وتم تسجيل الدخول.",
+      token,
+      user: {
+        id: user._id,
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+      },
+    });
+  } catch (error) {
+    console.error("Device verification error:", error);
+    return res.status(500).json({ message: "حدث خطأ في الخادم أثناء التحقق من الجهاز." });
+  }
+
+}
+
+
 module.exports = {
   registerUser,
   loginUser,
@@ -532,4 +748,6 @@ module.exports = {
   logoutUser,
   verifyEmail,
   resendVerification,
+  checkLoginStatus,
+  checkDeviceVerificationCode
 };
