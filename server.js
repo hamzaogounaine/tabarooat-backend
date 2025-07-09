@@ -14,7 +14,7 @@ const corsOptions = {
   optionsSuccessStatus: 204 
 };
 app.use(cors(corsOptions));
-
+app.set('trust proxy' , true)
 app.use(express.json()); 
 
 
