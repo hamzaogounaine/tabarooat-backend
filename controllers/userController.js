@@ -9,7 +9,7 @@ const UAParser = require('ua-parser-js');
 
 
 const redis = new Redis(process.env.REDISCLOUD_URL || "redis://127.0.0.1:6379");
-
+const userAgent = req.headers['user-agent'] || 'Unknown';
 const parser = new UAParser(userAgent);
 const browser = parser.getBrowser();
 const device = parser.getDevice();
