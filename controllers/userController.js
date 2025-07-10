@@ -5,12 +5,11 @@ const nodemailer = require("nodemailer");
 const crypto = require("crypto");
 const { serialize } = require("cookie");
 const Redis = require("ioredis");
-const UAParser = require('ua-parser-js');
-
+const UAParser = require("ua-parser-js");
 
 const redis = new Redis(process.env.REDISCLOUD_URL || "redis://127.0.0.1:6379");
 
-
+const getMessage = require("../utils/messages");
 
 const transporter = nodemailer.createTransport({
   host: process.env.EMAIL_HOST || "sandbox.smtp.mailtrap.io",
@@ -100,7 +99,6 @@ const sendVerificationEmailHelper = async (user) => {
 };
 
 const sendDeviceVerificationCodeEmail = async (user, verificationCode) => {
- 
   const emailTemplate = `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
         <div style="background-color: #f8f9fa; padding: 20px; border-radius: 10px; text-align: center;">
@@ -159,8 +157,16 @@ const registerUser = async (req, res) => {
     const { email, firstName, lastName, password, dob, termsAccepted } =
       req.body;
 
+    const lang =
+      req.body.lang ||
+      req.query.lang ||
+      req.headers["accept-language"]?.split(",")[0]?.toLowerCase() ||
+      "ar";
+
     if (!email || !firstName || !lastName || !password || !dob) {
-      return res.status(400).json({ message: "جميع الحقول مطلوبة" });
+      return res
+        .status(400)
+        .json({ message: getMessage("requiredFields", lang) });
     }
 
     if (!termsAccepted) {
@@ -263,13 +269,16 @@ const verifyEmail = async (req, res) => {
 
 const loginUser = async (req, res) => {
   const block_time = 60 * 5; // Duration in seconds (5 minutes) for blocking an IP
-  const userAgent = req.headers['user-agent'] || 'Unknown';
+  const userAgent = req.headers["user-agent"] || "Unknown";
   const parser = new UAParser(userAgent);
   const browser = parser.getBrowser();
   const device = parser.getDevice();
 
+
+  
+
   try {
-    const { email, password } = req.body;
+    const { email, password , lang } = req.body;
 
     // Helper function to increment Redis counter on failed attempts
     const incrementFailedAttempts = async () => {
@@ -286,7 +295,8 @@ const loginUser = async (req, res) => {
     // 1. Validate required fields
     if (!email || !password) {
       await incrementFailedAttempts();
-      return res.status(400).json({ message: "جميع الحقول مطلوبة" }); // All fields are required
+      return res.status(400).json({ message: getMessage("requiredFields", lang) });
+
     }
 
     // 2. Find the user by email
@@ -294,7 +304,8 @@ const loginUser = async (req, res) => {
 
     if (!existingUser) {
       await incrementFailedAttempts();
-      return res.status(401).json({ message: "الإيميل أو كلمة السر غلط" }); // Email or password is wrong
+      return res.status(401).json({ message: getMessage("invalidCredentials", lang) });
+
     }
 
     // 3. Validate password
@@ -302,7 +313,8 @@ const loginUser = async (req, res) => {
 
     if (!validPassword) {
       await incrementFailedAttempts();
-      return res.status(401).json({ message: "الإيميل أو كلمة السر غلط" }); // Email or password is wrong
+      return res.status(401).json({ message: getMessage("invalidCredentials", lang) });
+
     }
 
     // 4. Check if user is verified
@@ -312,16 +324,16 @@ const loginUser = async (req, res) => {
       // Generate a new verification token and update user
       const newVerificationToken = crypto.randomBytes(32).toString("hex");
       existingUser.emailVerificationToken = newVerificationToken;
-      existingUser.emailVerificationTokenExpire = new Date(Date.now() + 3600000); // 1 hour validity
+      existingUser.emailVerificationTokenExpire = new Date(
+        Date.now() + 3600000
+      ); // 1 hour validity
       await existingUser.save();
 
       // Send a new verification email
       await sendVerificationEmailHelper(existingUser);
 
-      return res.status(401).json({
-        message:
-          "يرجى تفعيل بريدك الإلكتروني لتتمكن من تسجيل الدخول. تم إرسال رابط تحقق جديد إلى بريدك الإلكتروني.", // Please activate your email to log in. A new verification link has been sent to your email.
-      });
+      return res.status(401).json({message:
+        getMessage("notVerified", lang)});
     }
 
     // --- New Device/IP Login Flow ---
@@ -329,31 +341,31 @@ const loginUser = async (req, res) => {
     if (existingUser.lastLoginIp !== req.ip) {
       // Generate a cryptographically secure 6-digit code
       const randomNumber = crypto.randomBytes(3).readUIntBE(0, 3);
-      const verificationCode = String(randomNumber % 1000000).padStart(6, '0');
+      const verificationCode = String(randomNumber % 1000000).padStart(6, "0");
 
       existingUser.verificationCode = verificationCode;
       existingUser.verificationCodeExpire = Date.now() + 1000 * 60 * 10;
-      await sendDeviceVerificationCodeEmail(existingUser , verificationCode)
+      await sendDeviceVerificationCodeEmail(existingUser, verificationCode);
       await existingUser.save();
 
       return res.status(200).json({
-        message: "تم الكشف عن جهاز أو عنوان IP جديد. تم إرسال رمز تحقق إلى بريدك الإلكتروني.", // New device or IP detected. A verification code has been sent to your email.
+        message: getMessage("deviceVerificationSent", lang),
         requiresVerificationCode: true,
-        email: existingUser.email
+        email: existingUser.email,
       });
     }
 
     // If all checks pass and it's not a new device, proceed with standard login
     // Clear the rate limit key for this IP on successful login.
     if (req.rateLimitKey) {
-        await redis.del(req.rateLimitKey);
+      await redis.del(req.rateLimitKey);
     }
 
     // Update last login details
     existingUser.lastLoginIp = req.ip;
     existingUser.lastUsedDevice = device;
     existingUser.lastUsedBrowser = browser;
-    
+
     await existingUser.save(); // Save the updated user details
 
     // 5. Generate JWT token
@@ -388,12 +400,12 @@ const loginUser = async (req, res) => {
   } catch (error) {
     console.error("Login error:", error);
     // Do NOT increment Redis here, as this is a server-side error, not a user-induced failed attempt.
-    return res.status(500).json({ message: "حدث خطأ في الخادم" }); // Server error occurred
+    return res.status(500).json({ message: getMessage('serverError' , lang) }); // Server error occurred
   }
 };
 
-
 const logoutUser = async (req, res) => {
+  const {lang} = req.body
   try {
     // Clear the 'token' cookie by setting an expired cookie
     res.setHeader(
@@ -409,20 +421,20 @@ const logoutUser = async (req, res) => {
       })
     );
 
-    return res.status(200).json({ message: "تم تسجيل الخروج بنجاح." });
+    return res.status(200).json({ message: getMessage('logoutSuccess' , lang) });
   } catch (error) {
     console.error("Logout error:", error);
-    return res.status(500).json({ message: "فشل تسجيل الخروج." });
+    return res.status(500).json({ message: getMessage('serverError' , lang) });
   }
 };
 
 const sendResetPasswordLink = async (req, res) => {
   try {
-    const { email } = req.body;
+    const { email, lang } = req.body;
 
     // Input validation
     if (!email) {
-      return res.status(400).json({ message: "البريد الإلكتروني مطلوب" });
+      return res.status(400).json({ message: getMessage('emailRequired' , lang) });
     }
 
     // Email format validation
@@ -430,19 +442,17 @@ const sendResetPasswordLink = async (req, res) => {
     if (!emailRegex.test(email)) {
       return res
         .status(400)
-        .json({ message: "صيغة البريد الإلكتروني غير صحيحة" });
+        .json({ message: getMessage('invalidEmailFormat' , lang) });
     }
 
     const user = await User.findOne({ email });
 
     if (!user) {
       // Security best practice: don't confirm if email exists
-      return res
-        .status(200)
-        .json({
-          message:
-            "إذا كان البريد الإلكتروني مسجلاً لدينا، فستتلقى رابط إعادة تعيين كلمة السر قريباً.",
-        });
+      return res.status(200).json({
+        message:
+        getMessage('emailVerificationSent' , lang) 
+      });
     }
 
     // Generate secure token
@@ -508,7 +518,7 @@ const sendResetPasswordLink = async (req, res) => {
     console.log(`Password reset email sent to: ${email}`);
 
     return res.status(200).json({
-      message: "تم إرسال رابط إعادة تعيين كلمة السر إلى بريدك الإلكتروني",
+      message: getMessage('resetLinkSent' , lang) ,
       tokenExpiry: "30 minutes",
     });
   } catch (error) {
@@ -520,7 +530,7 @@ const sendResetPasswordLink = async (req, res) => {
         .json({ message: "خطأ في الاتصال بخدمة البريد الإلكتروني" });
     }
 
-    return res.status(500).json({ message: "حدث خطأ في الخادم" });
+    return res.status(500).json({ message: getMessage('serverError' , lang)  });
   }
 };
 
@@ -568,12 +578,10 @@ const resendVerification = async (req, res) => {
 
     if (!user) {
       console.log(`Attempted resend for non-existent email: ${email}`);
-      return res
-        .status(200)
-        .json({
-          message:
-            "إذا كان البريد الإلكتروني مسجلاً لدينا، فستتلقى رابط تحقق جديدًا قريبًا.",
-        });
+      return res.status(200).json({
+        message:
+          "إذا كان البريد الإلكتروني مسجلاً لدينا، فستتلقى رابط تحقق جديدًا قريبًا.",
+      });
     }
 
     if (user.isVerified) {
@@ -604,7 +612,6 @@ const resendVerification = async (req, res) => {
   }
 };
 
-
 const checkLoginStatus = (req, res) => {
   try {
     // 1. Get the token from the request cookies
@@ -613,8 +620,10 @@ const checkLoginStatus = (req, res) => {
 
     // 2. If no token is found, the user is not logged in
     if (!token) {
-      console.log('Check Login Status: No token found.');
-      return res.status(200).json({ isLoggedIn: false, message: 'No token provided.' });
+      console.log("Check Login Status: No token found.");
+      return res
+        .status(200)
+        .json({ isLoggedIn: false, message: "No token provided." });
     }
 
     // 3. Verify the token using the secret key
@@ -624,7 +633,7 @@ const checkLoginStatus = (req, res) => {
 
     // 4. If verification is successful, the user is logged in
     // You can return some decoded user information (e.g., userId, email)
-    console.log('Check Login Status: Token valid, user logged in.');
+    console.log("Check Login Status: Token valid, user logged in.");
     return res.status(200).json({
       isLoggedIn: true,
       user: {
@@ -633,20 +642,22 @@ const checkLoginStatus = (req, res) => {
         type: decoded.type,
         // Add any other claims you put in your JWT payload
       },
-      message: 'User is logged in.'
+      message: "User is logged in.",
     });
-
   } catch (error) {
     // 5. If verification fails (e.g., token expired, invalid signature), the user is not logged in
-    console.error('Check Login Status: Token verification failed:', error.message);
+    console.error(
+      "Check Login Status: Token verification failed:",
+      error.message
+    );
 
     // If the token is expired or invalid, send isLoggedIn: false
     // You might also want to clear the invalid cookie on the client side,
     // or send a response header to clear it if this is an API endpoint.
     // For a simple status check, just reporting false is often enough.
-    
+
     // To clear the cookie from the server side for an invalid token:
-    res.clearCookie('token', {
+    res.clearCookie("token", {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "strict",
@@ -656,21 +667,20 @@ const checkLoginStatus = (req, res) => {
     return res.status(200).json({
       isLoggedIn: false,
       message: `Authentication failed: ${error.message}. Token cleared.`,
-      error: error.message
+      error: error.message,
     });
   }
 };
 
-
-const checkDeviceVerificationCode = async(req , res) => {
-  const {email , code} = req.body;
+const checkDeviceVerificationCode = async (req, res) => {
+  const { email, code } = req.body;
 
   try {
     // 1. Find the user and verify the code and its expiration in one query
     const user = await User.findOne({
       email,
       verificationCode: code,
-      verificationCodeExpire : { $gt : new Date() } // Check if the code is still valid (greater than current date)
+      verificationCodeExpire: { $gt: new Date() }, // Check if the code is still valid (greater than current date)
     });
 
     if (!user) {
@@ -690,7 +700,7 @@ const checkDeviceVerificationCode = async(req , res) => {
     // If this is a Next.js API route, req.ip might be undefined; you'd need to parse from headers like 'x-forwarded-for'
     user.lastLoginIp = req.ip; // Assuming req.ip is correctly populated by your server setup
 
-    const userAgent = req.headers['user-agent'] || 'Unknown';
+    const userAgent = req.headers["user-agent"] || "Unknown";
     const parser = new UAParser(userAgent);
     const browser = parser.getBrowser();
     const device = parser.getDevice();
@@ -734,11 +744,11 @@ const checkDeviceVerificationCode = async(req , res) => {
     });
   } catch (error) {
     console.error("Device verification error:", error);
-    return res.status(500).json({ message: "حدث خطأ في الخادم أثناء التحقق من الجهاز." });
+    return res
+      .status(500)
+      .json({ message: "حدث خطأ في الخادم أثناء التحقق من الجهاز." });
   }
-
-}
-
+};
 
 module.exports = {
   registerUser,
@@ -749,5 +759,5 @@ module.exports = {
   verifyEmail,
   resendVerification,
   checkLoginStatus,
-  checkDeviceVerificationCode
+  checkDeviceVerificationCode,
 };
