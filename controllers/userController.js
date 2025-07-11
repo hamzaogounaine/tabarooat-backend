@@ -10,14 +10,16 @@ const UAParser = require("ua-parser-js");
 const redis = new Redis(process.env.REDISCLOUD_URL || "redis://127.0.0.1:6379");
 
 const getMessage = require("../utils/messages");
+const  getEmailTemplate  = require("../utils/resetPasswordTemplate");
+const { getVerificationEmail } = require("../utils/emailVerificationTemplate");
 
 const transporter = nodemailer.createTransport({
   host: process.env.EMAIL_HOST || "sandbox.smtp.mailtrap.io",
   port: process.env.EMAIL_PORT || 2525,
   secure: process.env.EMAIL_SECURE === "true", // Use 'true' for 465, 'false' for 587/2525
   auth: {
-    user: process.env.MAILTRAP_USER || "071b9d7d870934",
-    pass: process.env.MAILTRAP_PASS || "4ce1ac460b1dc3",
+    user: process.env.MAILTRAP_USER || "07ad43d1ce15b8",
+    pass: process.env.MAILTRAP_PASS || "ca4760dd690d08",
   },
   tls: {
     // Do not fail on invalid certs. Useful for local development with self-signed certs.
@@ -45,57 +47,21 @@ if (process.env.NODE_ENV !== "production" && !process.env.MAILTRAP_USER) {
 }
 
 // --- Helper Function for Sending Verification Email ---
-const sendVerificationEmailHelper = async (user) => {
+const sendVerificationEmailHelper = async (user, lang) => {
   const baseUrl = process.env.FRONTEND_URL || "http://localhost:3000";
   const verificationLink = `${baseUrl}/verify-email?token=${user.emailVerificationToken}&email=${user.email}`;
 
-  const emailTemplate = `
-    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-        <div style="background-color: #f8f9fa; padding: 20px; border-radius: 10px; text-align: center;">
-            <h2 style="color: #333; margin-bottom: 20px;">تأكيد بريدك الإلكتروني</h2>
-            <p style="color: #666; font-size: 16px; line-height: 1.6;">
-                مرحباً بك في منصة التبرعات!
-                <br>
-                لإكمال تسجيل حسابك، يرجى النقر على الرابط أدناه لتأكيد بريدك الإلكتروني:
-            </p>
-            <div style="margin: 30px 0;">
-                <a href="${verificationLink}"
-                   style="background-color: #28a745; color: white; padding: 12px 30px;
-                          text-decoration: none; border-radius: 5px; font-weight: bold;
-                          display: inline-block;">
-                    تأكيد البريد الإلكتروني
-                </a>
-            </div>
-            <p style="color: #999; font-size: 14px;">
-                هذا الرابط صالح لمدة ساعة واحدة فقط.
-            </p>
-            <p style="color: #999; font-size: 14px;">
-                إذا لم تقم بإنشاء حساب في منصة التبرعات، يرجى تجاهل هذه الرسالة.
-            </p>
-        </div>
-    </div>
-  `;
+  const { subject, html, text } =  getVerificationEmail(lang || "en", verificationLink);
 
-  const mailOptions = {
+
+  await transporter.sendMail({
     from: process.env.FROM_EMAIL || "noreply@tabaroaat.com",
     to: user.email,
-    subject: "تأكيد بريدك الإلكتروني - منصة التبرعات",
-    html: emailTemplate,
-    text: `
-        تأكيد بريدك الإلكتروني
+    subject,
+    html,
+    text,
+  });
 
-        مرحباً بك في منصة التبرعات!
-
-        يرجى النقر على الرابط أدناه لتأكيد بريدك الإلكتروني وتفعيل حسابك:
-        ${verificationLink}
-
-        هذا الرابط صالح لمدة ساعة واحدة فقط.
-
-        إذا لم تقم بإنشاء حساب في منصة التبرعات، يرجى تجاهل هذه الرسالة.
-    `,
-  };
-
-  await transporter.sendMail(mailOptions);
 };
 
 const sendDeviceVerificationCodeEmail = async (user, verificationCode) => {
@@ -154,14 +120,9 @@ const sendDeviceVerificationCodeEmail = async (user, verificationCode) => {
 
 const registerUser = async (req, res) => {
   try {
-    const { email, firstName, lastName, password, dob, termsAccepted } =
+    const { email, firstName, lastName, password, dob, termsAccepted,  lang } =
       req.body;
 
-    const lang =
-      req.body.lang ||
-      req.query.lang ||
-      req.headers["accept-language"]?.split(",")[0]?.toLowerCase() ||
-      "ar";
 
     if (!email || !firstName || !lastName || !password || !dob) {
       return res
@@ -172,13 +133,13 @@ const registerUser = async (req, res) => {
     if (!termsAccepted) {
       return res
         .status(400)
-        .json({ message: "يجب الموافقة على الشروط والأحكام وسياسة الخصوصية" });
+        .json({ message: getMessage('termsRequired' , lang) });
     }
 
     if (password.length < 6) {
       return res
         .status(400)
-        .json({ message: "كلمة السر يجب أن تكون 6 حروف على الأقل" });
+        .json({ message: getMessage('passwordTooShort' , lang) });
     }
 
     // Calculate age more robustly to handle exact date comparison
@@ -193,13 +154,13 @@ const registerUser = async (req, res) => {
     if (age < 18) {
       return res
         .status(400)
-        .json({ message: "يجب أن يكون العمر 18 سنة أو أكثر" });
+        .json({ message:getMessage('ageRequirement' , lang) });
     }
 
     const existingUser = await User.findOne({ email });
 
     if (existingUser) {
-      return res.status(409).json({ message: "هذا الإيميل مسجل من قبل" });
+      return res.status(409).json({ message: getMessage('emailAlreadyExists' , lang) });
     }
 
     const hashedPassword = await bcrypt.hash(password, 12);
@@ -224,20 +185,20 @@ const registerUser = async (req, res) => {
     await user.save();
 
     // --- Call the helper function to send verification email ---
-    await sendVerificationEmailHelper(user);
+    await sendVerificationEmailHelper(user , lang);
 
     return res.status(201).json({
       message:
-        "تم التسجيل بنجاح، يرجى التحقق من بريدك الإلكتروني لتفعيل حسابك.",
+       getMessage('registrationSuccess' , lang)
     });
   } catch (error) {
     console.error("Registration error:", error);
-    return res.status(500).json({ message: "حدث خطأ في الخادم" });
+    return res.status(500).json({ message: getMessage('serverError' , lang) });
   }
 };
 
 const verifyEmail = async (req, res) => {
-  const { email, token } = req.query;
+  const { email, token , lang} = req.query;
 
   try {
     const user = await User.findOne({
@@ -247,7 +208,7 @@ const verifyEmail = async (req, res) => {
     });
 
     if (!user) {
-      return res.status(400).send("رابط التحقق غير صالح أو منتهي الصلاحية.");
+      return res.status(400).json({message : getMessage('invalidResetToken' , lang)});
     }
 
     user.isVerified = true;
@@ -258,12 +219,12 @@ const verifyEmail = async (req, res) => {
 
     res
       .status(200)
-      .send("تم التحقق من بريدك الإلكتروني بنجاح! يمكنك الآن تسجيل الدخول.");
+      .json({message : getMessage('verificationSuccess' , lang)});
   } catch (error) {
     console.error("Email verification error:", error);
     res
       .status(500)
-      .send("فشل التحقق من البريد الإلكتروني. يرجى المحاولة مرة أخرى.");
+      .json({message : getMessage('emailVerificationFailed' , lang)});
   }
 };
 
@@ -330,7 +291,7 @@ const loginUser = async (req, res) => {
       await existingUser.save();
 
       // Send a new verification email
-      await sendVerificationEmailHelper(existingUser);
+      await sendVerificationEmailHelper(existingUser, lang);
 
       return res.status(401).json({message:
         getMessage("notVerified", lang)});
@@ -433,7 +394,7 @@ const sendResetPasswordLink = async (req, res) => {
     const { email, lang } = req.body;
 
     // Input validation
-    if (!email) {
+    if (!email.trim()) {
       return res.status(400).json({ message: getMessage('emailRequired' , lang) });
     }
 
@@ -466,53 +427,20 @@ const sendResetPasswordLink = async (req, res) => {
     const resetLink = `${baseUrl}/reset-password?token=${token}`;
 
     // Enhanced email template
-    const emailTemplate = `
-            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-                <div style="background-color: #f8f9fa; padding: 20px; border-radius: 10px; text-align: center;">
-                    <h2 style="color: #333; margin-bottom: 20px;">إعادة تعيين كلمة السر</h2>
-                    <p style="color: #666; font-size: 16px; line-height: 1.6;">
-                        لقد طلبت إعادة تعيين كلمة السر لحسابك. انقر على الرابط أدناه لإعادة تعيين كلمة السر:
-                    </p>
-                    <div style="margin: 30px 0;">
-                        <a href="${resetLink}"
-                           style="background-color: #007bff; color: white; padding: 12px 30px;
-                                  text-decoration: none; border-radius: 5px; font-weight: bold;
-                                  display: inline-block;">
-                            إعادة تعيين كلمة السر
-                        </a>
-                    </div>
-                    <p style="color: #999; font-size: 14px;">
-                        هذا الرابط صالح لمدة 30 دقيقة فقط
-                    </p>
-                    <p style="color: #999; font-size: 14px;">
-                        إذا لم تطلب إعادة تعيين كلمة السر، يرجى تجاهل هذه الرسالة
-                    </p>
-                </div>
-            </div>
-        `;
+    const { subject, html, text } = getEmailTemplate(lang || 'en', resetLink);
 
     // Send email with error handling
+
     const mailOptions = {
       from: process.env.FROM_EMAIL || "noreply@tabaroaat.com",
       to: user.email,
-      subject: "إعادة تعيين كلمة السر - منصة التبرعات",
-      html: emailTemplate,
-      // Add text version for better compatibility
-      text: `
-                إعادة تعيين كلمة السر
-
-                لقد طلبت إعادة تعيين كلمة السر لحسابك.
-
-                استخدم الرابط التالي لإعادة تعيين كلمة السر:
-                ${resetLink}
-
-                هذا الرابط صالح لمدة 30 دقيقة فقط.
-
-                إذا لم تطلب إعادة تعيين كلمة السر، يرجى تجاهل هذه الرسالة.
-            `,
+      subject,
+      html,
+      text,
     };
-
+    
     await transporter.sendMail(mailOptions);
+    
 
     // Log successful email send (without sensitive data)
     console.log(`Password reset email sent to: ${email}`);
@@ -536,14 +464,14 @@ const sendResetPasswordLink = async (req, res) => {
 
 const resetPassword = async (req, res) => {
   try {
-    const { password } = req.body;
+    const { password , lang } = req.body;
     const { token } = req.params; // Assuming token is from URL params
 
     if (!password || password.length < 6) {
       // Add password validation
       return res
         .status(400)
-        .json({ message: "كلمة السر الجديدة يجب أن تكون 6 أحرف على الأقل." });
+        .json({ message: getMessage('passwordTooShort' , lang) });
     }
 
     const user = await User.findOne({
@@ -554,7 +482,7 @@ const resetPassword = async (req, res) => {
     if (!user) {
       return res
         .status(400) // Changed from 404 to 400 for consistency with "invalid or expired"
-        .json({ message: "الرمز غير صالح أو منتهي الصلاحية" });
+        .json({ message: getMessage('invalidResetToken' , lang) });
     }
 
     const hashedPassword = await bcrypt.hash(password, 12);
@@ -563,16 +491,16 @@ const resetPassword = async (req, res) => {
     user.resetTokenExpire = undefined; // Set to undefined
     await user.save();
 
-    return res.status(200).json({ message: "تم إعادة تعيين كلمة السر بنجاح" }); // Changed to 200 OK
+    return res.status(200).json({ message: getMessage('passwordResetSuccess' , lang) }); // Changed to 200 OK
   } catch (err) {
     console.error("Reset password error:", err); // Log the actual error
-    return res.status(500).json({ message: "حدث خطأ في الخادم" }); // Return a server error
+    return res.status(500).json({ message: getMessage('serverError' , lang) }); // Return a server error
   }
 };
 
 const resendVerification = async (req, res) => {
   try {
-    const { email } = req.body;
+    const { email ,lang} = req.body;
 
     const user = await User.findOne({ email });
 
@@ -580,14 +508,14 @@ const resendVerification = async (req, res) => {
       console.log(`Attempted resend for non-existent email: ${email}`);
       return res.status(200).json({
         message:
-          "إذا كان البريد الإلكتروني مسجلاً لدينا، فستتلقى رابط تحقق جديدًا قريبًا.",
+          getMessage('emailVerificationSent' , lang)
       });
     }
 
     if (user.isVerified) {
       return res
         .status(200)
-        .json({ message: "هذا الحساب تم التحقق منه بالفعل." });
+        .json({ message: getMessage('alreadyVerified', lang) });
     }
 
     // Generate new token and set new expiration
@@ -596,19 +524,19 @@ const resendVerification = async (req, res) => {
     user.emailVerificationTokenExpire = new Date(Date.now() + 3600000); // 1 hour validity
 
     // --- Call the helper function to send verification email ---
-    await sendVerificationEmailHelper(user);
+    await sendVerificationEmailHelper(user ,lang);
 
     await user.save(); // Save updated user with new token/expiration
 
     return res.status(200).json({
       message:
-        "تم إرسال رابط التحقق الجديد إلى بريدك الإلكتروني. يرجى التحقق من صندوق الوارد الخاص بك.",
+        getMessage('resendVerificationSuccess' , lang)
     });
   } catch (err) {
     console.error("Resend verification error:", err);
     return res
       .status(500)
-      .json({ message: "فشل إعادة إرسال رابط التحقق. يرجى المحاولة لاحقاً." });
+      .json({ message: getMessage('serverError' , lang) });
   }
 };
 
@@ -623,7 +551,7 @@ const checkLoginStatus = (req, res) => {
       console.log("Check Login Status: No token found.");
       return res
         .status(200)
-        .json({ isLoggedIn: false, message: "No token provided." });
+        .json({ isLoggedIn: false, message: getMessage('tokenMissing' , lang) });
     }
 
     // 3. Verify the token using the secret key
@@ -642,7 +570,7 @@ const checkLoginStatus = (req, res) => {
         type: decoded.type,
         // Add any other claims you put in your JWT payload
       },
-      message: "User is logged in.",
+      message: getMessage('loginSuccess' , lang)
     });
   } catch (error) {
     // 5. If verification fails (e.g., token expired, invalid signature), the user is not logged in
@@ -673,7 +601,7 @@ const checkLoginStatus = (req, res) => {
 };
 
 const checkDeviceVerificationCode = async (req, res) => {
-  const { email, code } = req.body;
+  const { email, code ,lang } = req.body;
 
   try {
     // 1. Find the user and verify the code and its expiration in one query
@@ -687,7 +615,7 @@ const checkDeviceVerificationCode = async (req, res) => {
       // If no user is found with the given email, code, and valid expiration
       return res
         .status(400)
-        .json({ message: "الرمز غير صالح أو منتهي الصلاحية" });
+        .json({ message:getMessage('invalidResetToken') , lang });
     }
 
     // 2. Clear the verification code and its expiration from the user document
@@ -733,7 +661,7 @@ const checkDeviceVerificationCode = async (req, res) => {
 
     // 6. Send successful login response
     return res.status(200).json({
-      message: "تم التحقق من الجهاز بنجاح وتم تسجيل الدخول.",
+      message: getMessage('deviceVerified' , lang),
       token,
       user: {
         id: user._id,
@@ -746,7 +674,7 @@ const checkDeviceVerificationCode = async (req, res) => {
     console.error("Device verification error:", error);
     return res
       .status(500)
-      .json({ message: "حدث خطأ في الخادم أثناء التحقق من الجهاز." });
+      .json({ message: getM });
   }
 };
 

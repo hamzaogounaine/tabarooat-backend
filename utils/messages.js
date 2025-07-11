@@ -114,11 +114,16 @@ const messages = {
     en: "A server error occurred",
     fr: "Une erreur du serveur s'est produite",
   },
-  emailVerification : {
+  emailVerificationSent: {
     ar: "إذا كان البريد الإلكتروني مسجلاً لدينا، فستتلقى رابط إعادة تعيين كلمة السر قريباً.",
     en: "If the email is registered with us, you will receive a password reset link shortly.",
-    fr: "Si l'e-mail est enregistré chez nous, vous recevrez bientôt un lien de réinitialisation du mot de passe."
-  }
+    fr: "Si l'e-mail est enregistré chez nous, vous recevrez bientôt un lien de réinitialisation du mot de passe.",
+  },
+  emailVerificationFailed: {
+    ar: "فشل التحقق من البريد الإلكتروني. يرجى المحاولة مرة أخرى.",
+    en: "Email verification failed. Please try again.",
+    fr: "Échec de la vérification de l'e-mail. Veuillez réessayer.",
+  },
 };
 
 function getMessage(key, lang = "ar") {
