@@ -344,7 +344,7 @@ const loginUser = async (req, res) => {
         secure: true, // Only send over HTTPS in production
         sameSite: "Lax", // Protects against CSRF attacks
         maxAge: 7200, // Matches the JWT expiry (2 hours in seconds)
-        domain: "tabaroaat.ogounainehamza.me", // Cookie is valid for all paths
+        domain: ".ogounainehamza.me", // Cookie is valid for all paths
 
       })
     );
