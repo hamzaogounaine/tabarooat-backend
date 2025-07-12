@@ -342,9 +342,9 @@ const loginUser = async (req, res) => {
       serialize("token", token, {
         httpOnly: true, // Prevents client-side JavaScript from accessing the cookie
         secure: true, // Only send over HTTPS in production
-        sameSite: "None", // Protects against CSRF attacks
+        sameSite: "Lax", // Protects against CSRF attacks
         maxAge: 7200, // Matches the JWT expiry (2 hours in seconds)
-        path: "/", // Cookie is valid for all paths
+        path: ".ogounainehamza.me", // Cookie is valid for all paths
       })
     );
 
@@ -375,7 +375,7 @@ const logoutUser = async (req, res) => {
         // Set value to empty string
         httpOnly: true,
         secure: true ,
-        sameSite: "None",
+        sameSite: "Lax",
         maxAge: 0, // Set maxAge to 0 to expire the cookie immediately
         expires: new Date(0), // Set expires to a past date (epoch) for immediate expiration
         path: "/",
@@ -588,7 +588,7 @@ const checkLoginStatus = (req, res) => {
     res.clearCookie("token", {
       httpOnly: true,
       secure: true,
-      sameSite: "None",
+      sameSite: "Lax",
       path: "/",
     });
 
@@ -646,14 +646,14 @@ const checkDeviceVerificationCode = async (req, res) => {
 
     // 4. Calculate cookie maxAge to match JWT expiresIn
     const fiveHoursInSeconds = 5 * 60 * 60; // 18000 seconds
-
+    console.log("Attempting to set cookie for token:", token); 
     // 5. Set JWT as an HttpOnly cookie
     res.setHeader(
       "Set-Cookie",
       serialize("token", token, {
         httpOnly: true, // Prevents client-side JavaScript from accessing the cookie
         secure: true, // Only send over HTTPS in production
-        sameSite: "None", // Protects against CSRF attacks
+        sameSite: "Lax", // Protects against CSRF attacks
         maxAge: fiveHoursInSeconds, // Matches the JWT expiry (5 hours in seconds)
         path: "/", // Cookie is valid for all paths
       })
