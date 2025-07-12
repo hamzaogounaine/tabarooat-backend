@@ -10,7 +10,7 @@ const UAParser = require("ua-parser-js");
 const redis = new Redis(process.env.REDISCLOUD_URL || "redis://127.0.0.1:6379");
 
 const getMessage = require("../utils/messages");
-const  getEmailTemplate  = require("../utils/resetPasswordTemplate");
+const getEmailTemplate = require("../utils/resetPasswordTemplate");
 const { getVerificationEmail } = require("../utils/emailVerificationTemplate");
 
 const transporter = nodemailer.createTransport({
@@ -51,8 +51,10 @@ const sendVerificationEmailHelper = async (user, lang) => {
   const baseUrl = process.env.FRONTEND_URL || "http://localhost:3000";
   const verificationLink = `${baseUrl}/verify-email?token=${user.emailVerificationToken}&email=${user.email}`;
 
-  const { subject, html, text } =  getVerificationEmail(lang || "en", verificationLink);
-
+  const { subject, html, text } = getVerificationEmail(
+    lang || "en",
+    verificationLink
+  );
 
   await transporter.sendMail({
     from: process.env.FROM_EMAIL || "noreply@tabaroaat.com",
@@ -61,7 +63,6 @@ const sendVerificationEmailHelper = async (user, lang) => {
     html,
     text,
   });
-
 };
 
 const sendDeviceVerificationCodeEmail = async (user, verificationCode) => {
@@ -120,9 +121,8 @@ const sendDeviceVerificationCodeEmail = async (user, verificationCode) => {
 
 const registerUser = async (req, res) => {
   try {
-    const { email, firstName, lastName, password, dob, termsAccepted,  lang } =
+    const { email, firstName, lastName, password, dob, termsAccepted, lang } =
       req.body;
-
 
     if (!email || !firstName || !lastName || !password || !dob) {
       return res
@@ -133,13 +133,13 @@ const registerUser = async (req, res) => {
     if (!termsAccepted) {
       return res
         .status(400)
-        .json({ message: getMessage('termsRequired' , lang) });
+        .json({ message: getMessage("termsRequired", lang) });
     }
 
     if (password.length < 6) {
       return res
         .status(400)
-        .json({ message: getMessage('passwordTooShort' , lang) });
+        .json({ message: getMessage("passwordTooShort", lang) });
     }
 
     // Calculate age more robustly to handle exact date comparison
@@ -154,13 +154,15 @@ const registerUser = async (req, res) => {
     if (age < 18) {
       return res
         .status(400)
-        .json({ message:getMessage('ageRequirement' , lang) });
+        .json({ message: getMessage("ageRequirement", lang) });
     }
 
     const existingUser = await User.findOne({ email });
 
     if (existingUser) {
-      return res.status(409).json({ message: getMessage('emailAlreadyExists' , lang) });
+      return res
+        .status(409)
+        .json({ message: getMessage("emailAlreadyExists", lang) });
     }
 
     const hashedPassword = await bcrypt.hash(password, 12);
@@ -185,20 +187,19 @@ const registerUser = async (req, res) => {
     await user.save();
 
     // --- Call the helper function to send verification email ---
-    await sendVerificationEmailHelper(user , lang);
+    await sendVerificationEmailHelper(user, lang);
 
     return res.status(201).json({
-      message:
-       getMessage('registrationSuccess' , lang)
+      message: getMessage("registrationSuccess", lang),
     });
   } catch (error) {
     console.error("Registration error:", error);
-    return res.status(500).json({ message: getMessage('serverError' , lang) });
+    return res.status(500).json({ message: getMessage("serverError", lang) });
   }
 };
 
 const verifyEmail = async (req, res) => {
-  const { email, token , lang} = req.query;
+  const { email, token, lang } = req.query;
 
   try {
     const user = await User.findOne({
@@ -208,7 +209,9 @@ const verifyEmail = async (req, res) => {
     });
 
     if (!user) {
-      return res.status(400).json({message : getMessage('invalidResetToken' , lang)});
+      return res
+        .status(400)
+        .json({ message: getMessage("invalidResetToken", lang) });
     }
 
     user.isVerified = true;
@@ -217,14 +220,12 @@ const verifyEmail = async (req, res) => {
 
     await user.save();
 
-    res
-      .status(200)
-      .json({message : getMessage('verificationSuccess' , lang)});
+    res.status(200).json({ message: getMessage("verificationSuccess", lang) });
   } catch (error) {
     console.error("Email verification error:", error);
     res
       .status(500)
-      .json({message : getMessage('emailVerificationFailed' , lang)});
+      .json({ message: getMessage("emailVerificationFailed", lang) });
   }
 };
 
@@ -235,12 +236,8 @@ const loginUser = async (req, res) => {
   const browser = parser.getBrowser();
   const device = parser.getDevice();
 
-
-  
-
-  const { email, password , lang } = req.body;
+  const { email, password, lang } = req.body;
   try {
-    
     // Helper function to increment Redis counter on failed attempts
     const incrementFailedAttempts = async () => {
       // Ensure req.rateLimitKey is set by a preceding middleware (e.g., for IP-based rate limiting)
@@ -256,8 +253,9 @@ const loginUser = async (req, res) => {
     // 1. Validate required fields
     if (!email || !password) {
       await incrementFailedAttempts();
-      return res.status(400).json({ message: getMessage("requiredFields", lang) });
-
+      return res
+        .status(400)
+        .json({ message: getMessage("requiredFields", lang) });
     }
 
     // 2. Find the user by email
@@ -265,8 +263,9 @@ const loginUser = async (req, res) => {
 
     if (!existingUser) {
       await incrementFailedAttempts();
-      return res.status(401).json({ message: getMessage("invalidCredentials", lang) });
-
+      return res
+        .status(401)
+        .json({ message: getMessage("invalidCredentials", lang) });
     }
 
     // 3. Validate password
@@ -274,8 +273,9 @@ const loginUser = async (req, res) => {
 
     if (!validPassword) {
       await incrementFailedAttempts();
-      return res.status(401).json({ message: getMessage("invalidCredentials", lang) });
-
+      return res
+        .status(401)
+        .json({ message: getMessage("invalidCredentials", lang) });
     }
 
     // 4. Check if user is verified
@@ -293,8 +293,7 @@ const loginUser = async (req, res) => {
       // Send a new verification email
       await sendVerificationEmailHelper(existingUser, lang);
 
-      return res.status(401).json({message:
-        getMessage("notVerified", lang)});
+      return res.status(401).json({ message: getMessage("notVerified", lang) });
     }
 
     // --- New Device/IP Login Flow ---
@@ -344,10 +343,20 @@ const loginUser = async (req, res) => {
         secure: true, // Only send over HTTPS in production
         sameSite: "Lax", // Protects against CSRF attacks
         maxAge: 7200, // Matches the JWT expiry (2 hours in seconds)
-        path: ".ogounainehamza.me", // Cookie is valid for all paths
+        domaine: "tabaroaat.ogounainehamza.me", // Cookie is valid for all paths
       })
     );
 
+    res.setHeader(
+      "Access-Control-Allow-Origin",
+      "https://tabaroaat.ogounainehamza.me"
+    );
+    res.setHeader("Access-Control-Allow-Credentials", "true"); // Allow cookies to be sent/received
+    res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS"); // Or relevant methods
+    res.setHeader(
+      "Access-Control-Allow-Headers",
+      "Content-Type, Authorization"
+    ); // Or relevant headers
     // 7. Send successful login response
     return res.status(200).json({
       token,
@@ -361,12 +370,12 @@ const loginUser = async (req, res) => {
   } catch (error) {
     console.error("Login error:", error);
     // Do NOT increment Redis here, as this is a server-side error, not a user-induced failed attempt.
-    return res.status(500).json({ message: getMessage('serverError' , lang) }); // Server error occurred
+    return res.status(500).json({ message: getMessage("serverError", lang) }); // Server error occurred
   }
 };
 
 const logoutUser = async (req, res) => {
-  const {lang} = req.body
+  const { lang } = req.body;
   try {
     // Clear the 'token' cookie by setting an expired cookie
     res.setHeader(
@@ -374,7 +383,7 @@ const logoutUser = async (req, res) => {
       serialize("token", "", {
         // Set value to empty string
         httpOnly: true,
-        secure: true ,
+        secure: true,
         sameSite: "Lax",
         maxAge: 0, // Set maxAge to 0 to expire the cookie immediately
         expires: new Date(0), // Set expires to a past date (epoch) for immediate expiration
@@ -382,10 +391,10 @@ const logoutUser = async (req, res) => {
       })
     );
 
-    return res.status(200).json({ message: getMessage('logoutSuccess' , lang) });
+    return res.status(200).json({ message: getMessage("logoutSuccess", lang) });
   } catch (error) {
     console.error("Logout error:", error);
-    return res.status(500).json({ message: getMessage('serverError' , lang) });
+    return res.status(500).json({ message: getMessage("serverError", lang) });
   }
 };
 
@@ -395,7 +404,9 @@ const sendResetPasswordLink = async (req, res) => {
 
     // Input validation
     if (!email.trim()) {
-      return res.status(400).json({ message: getMessage('emailRequired' , lang) });
+      return res
+        .status(400)
+        .json({ message: getMessage("emailRequired", lang) });
     }
 
     // Email format validation
@@ -403,7 +414,7 @@ const sendResetPasswordLink = async (req, res) => {
     if (!emailRegex.test(email)) {
       return res
         .status(400)
-        .json({ message: getMessage('invalidEmailFormat' , lang) });
+        .json({ message: getMessage("invalidEmailFormat", lang) });
     }
 
     const user = await User.findOne({ email });
@@ -411,8 +422,7 @@ const sendResetPasswordLink = async (req, res) => {
     if (!user) {
       // Security best practice: don't confirm if email exists
       return res.status(200).json({
-        message:
-        getMessage('emailVerificationSent' , lang) 
+        message: getMessage("emailVerificationSent", lang),
       });
     }
 
@@ -427,7 +437,7 @@ const sendResetPasswordLink = async (req, res) => {
     const resetLink = `${baseUrl}/reset-password?token=${token}`;
 
     // Enhanced email template
-    const { subject, html, text } = getEmailTemplate(lang || 'en', resetLink);
+    const { subject, html, text } = getEmailTemplate(lang || "en", resetLink);
 
     // Send email with error handling
 
@@ -438,15 +448,14 @@ const sendResetPasswordLink = async (req, res) => {
       html,
       text,
     };
-    
+
     await transporter.sendMail(mailOptions);
-    
 
     // Log successful email send (without sensitive data)
     console.log(`Password reset email sent to: ${email}`);
 
     return res.status(200).json({
-      message: getMessage('resetLinkSent' , lang) ,
+      message: getMessage("resetLinkSent", lang),
       tokenExpiry: "30 minutes",
     });
   } catch (error) {
@@ -458,20 +467,20 @@ const sendResetPasswordLink = async (req, res) => {
         .json({ message: "خطأ في الاتصال بخدمة البريد الإلكتروني" });
     }
 
-    return res.status(500).json({ message: getMessage('serverError' , lang)  });
+    return res.status(500).json({ message: getMessage("serverError", lang) });
   }
 };
 
 const resetPassword = async (req, res) => {
   try {
-    const { password , lang } = req.body;
+    const { password, lang } = req.body;
     const { token } = req.params; // Assuming token is from URL params
 
     if (!password || password.length < 6) {
       // Add password validation
       return res
         .status(400)
-        .json({ message: getMessage('passwordTooShort' , lang) });
+        .json({ message: getMessage("passwordTooShort", lang) });
     }
 
     const user = await User.findOne({
@@ -482,7 +491,7 @@ const resetPassword = async (req, res) => {
     if (!user) {
       return res
         .status(400) // Changed from 404 to 400 for consistency with "invalid or expired"
-        .json({ message: getMessage('invalidResetToken' , lang) });
+        .json({ message: getMessage("invalidResetToken", lang) });
     }
 
     const hashedPassword = await bcrypt.hash(password, 12);
@@ -491,31 +500,32 @@ const resetPassword = async (req, res) => {
     user.resetTokenExpire = undefined; // Set to undefined
     await user.save();
 
-    return res.status(200).json({ message: getMessage('passwordResetSuccess' , lang) }); // Changed to 200 OK
+    return res
+      .status(200)
+      .json({ message: getMessage("passwordResetSuccess", lang) }); // Changed to 200 OK
   } catch (err) {
     console.error("Reset password error:", err); // Log the actual error
-    return res.status(500).json({ message: getMessage('serverError' , lang) }); // Return a server error
+    return res.status(500).json({ message: getMessage("serverError", lang) }); // Return a server error
   }
 };
 
 const resendVerification = async (req, res) => {
   try {
-    const { email ,lang} = req.body;
+    const { email, lang } = req.body;
 
     const user = await User.findOne({ email });
 
     if (!user) {
       console.log(`Attempted resend for non-existent email: ${email}`);
       return res.status(200).json({
-        message:
-          getMessage('emailVerificationSent' , lang)
+        message: getMessage("emailVerificationSent", lang),
       });
     }
 
     if (user.isVerified) {
       return res
         .status(200)
-        .json({ message: getMessage('alreadyVerified', lang) });
+        .json({ message: getMessage("alreadyVerified", lang) });
     }
 
     // Generate new token and set new expiration
@@ -524,19 +534,16 @@ const resendVerification = async (req, res) => {
     user.emailVerificationTokenExpire = new Date(Date.now() + 3600000); // 1 hour validity
 
     // --- Call the helper function to send verification email ---
-    await sendVerificationEmailHelper(user ,lang);
+    await sendVerificationEmailHelper(user, lang);
 
     await user.save(); // Save updated user with new token/expiration
 
     return res.status(200).json({
-      message:
-        getMessage('resendVerificationSuccess' , lang)
+      message: getMessage("resendVerificationSuccess", lang),
     });
   } catch (err) {
     console.error("Resend verification error:", err);
-    return res
-      .status(500)
-      .json({ message: getMessage('serverError' , lang) });
+    return res.status(500).json({ message: getMessage("serverError", lang) });
   }
 };
 
@@ -551,7 +558,7 @@ const checkLoginStatus = (req, res) => {
       console.log("Check Login Status: No token found.");
       return res
         .status(200)
-        .json({ isLoggedIn: false, message: getMessage('tokenMissing' , lang) });
+        .json({ isLoggedIn: false, message: getMessage("tokenMissing", lang) });
     }
 
     // 3. Verify the token using the secret key
@@ -570,7 +577,7 @@ const checkLoginStatus = (req, res) => {
         type: decoded.type,
         // Add any other claims you put in your JWT payload
       },
-      message: getMessage('loginSuccess' , lang)
+      message: getMessage("loginSuccess", lang),
     });
   } catch (error) {
     // 5. If verification fails (e.g., token expired, invalid signature), the user is not logged in
@@ -601,7 +608,7 @@ const checkLoginStatus = (req, res) => {
 };
 
 const checkDeviceVerificationCode = async (req, res) => {
-  const { email, code ,lang } = req.body;
+  const { email, code, lang } = req.body;
 
   try {
     // 1. Find the user and verify the code and its expiration in one query
@@ -615,7 +622,7 @@ const checkDeviceVerificationCode = async (req, res) => {
       // If no user is found with the given email, code, and valid expiration
       return res
         .status(400)
-        .json({ message:getMessage('invalidResetToken') , lang });
+        .json({ message: getMessage("invalidResetToken"), lang });
     }
 
     // 2. Clear the verification code and its expiration from the user document
@@ -646,7 +653,7 @@ const checkDeviceVerificationCode = async (req, res) => {
 
     // 4. Calculate cookie maxAge to match JWT expiresIn
     const fiveHoursInSeconds = 5 * 60 * 60; // 18000 seconds
-    console.log("Attempting to set cookie for token:", token); 
+    console.log("Attempting to set cookie for token:", token);
     // 5. Set JWT as an HttpOnly cookie
     res.setHeader(
       "Set-Cookie",
@@ -661,7 +668,7 @@ const checkDeviceVerificationCode = async (req, res) => {
 
     // 6. Send successful login response
     return res.status(200).json({
-      message: getMessage('deviceVerified' , lang),
+      message: getMessage("deviceVerified", lang),
       token,
       user: {
         id: user._id,
@@ -672,9 +679,7 @@ const checkDeviceVerificationCode = async (req, res) => {
     });
   } catch (error) {
     console.error("Device verification error:", error);
-    return res
-      .status(500)
-      .json({ message: getM });
+    return res.status(500).json({ message: getM });
   }
 };
 
