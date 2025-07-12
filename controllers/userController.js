@@ -374,7 +374,7 @@ const logoutUser = async (req, res) => {
       serialize("token", "", {
         // Set value to empty string
         httpOnly: true,
-        secure: process.env.NODE_ENV === "production" ? true : false,
+        secure: true ,
         sameSite: "strict",
         maxAge: 0, // Set maxAge to 0 to expire the cookie immediately
         expires: new Date(0), // Set expires to a past date (epoch) for immediate expiration

@@ -5,7 +5,9 @@ const connectDb = require('./config/db')
 const { loginUser, registerUser, sendResetPasswordLink, resetPassword, logoutUser, verifyEmail, resendVerification, checkLoginStatus, checkDeviceVerificationCode } = require('./controllers/userController')
 const { loginFundraiser, registerFundraiser } = require('./controllers/raiserConrtoller')
 const { limitLoginMiddleware } = require('./middlewares/loginMiddleware')
+const cookieParser = require("cookie-parser");
 const app = express()
+app.use(cookieParser());
 
 const corsOptions = {
   origin: process.env.FRONTEND_URL, 
