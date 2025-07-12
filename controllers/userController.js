@@ -238,9 +238,9 @@ const loginUser = async (req, res) => {
 
   
 
+  const { email, password , lang } = req.body;
   try {
-    const { email, password , lang } = req.body;
-
+    
     // Helper function to increment Redis counter on failed attempts
     const incrementFailedAttempts = async () => {
       // Ensure req.rateLimitKey is set by a preceding middleware (e.g., for IP-based rate limiting)
@@ -342,7 +342,7 @@ const loginUser = async (req, res) => {
       serialize("token", token, {
         httpOnly: true, // Prevents client-side JavaScript from accessing the cookie
         secure: process.env.NODE_ENV === "production", // Only send over HTTPS in production
-        sameSite: "strict", // Protects against CSRF attacks
+        sameSite: "None", // Protects against CSRF attacks
         maxAge: 7200, // Matches the JWT expiry (2 hours in seconds)
         path: "/", // Cookie is valid for all paths
       })
