@@ -7,6 +7,8 @@ const { loginFundraiser, registerFundraiser } = require('./controllers/raiserCon
 const { limitLoginMiddleware } = require('./middlewares/loginMiddleware')
 const cookieParser = require("cookie-parser");
 const app = express()
+
+
 app.use(cookieParser());
 
 const corsOptions = {

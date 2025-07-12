@@ -341,7 +341,7 @@ const loginUser = async (req, res) => {
       "Set-Cookie",
       serialize("token", token, {
         httpOnly: true, // Prevents client-side JavaScript from accessing the cookie
-        secure: process.env.NODE_ENV === "production", // Only send over HTTPS in production
+        secure: true, // Only send over HTTPS in production
         sameSite: "None", // Protects against CSRF attacks
         maxAge: 7200, // Matches the JWT expiry (2 hours in seconds)
         path: "/", // Cookie is valid for all paths
@@ -375,7 +375,7 @@ const logoutUser = async (req, res) => {
         // Set value to empty string
         httpOnly: true,
         secure: true ,
-        sameSite: "strict",
+        sameSite: "Nome",
         maxAge: 0, // Set maxAge to 0 to expire the cookie immediately
         expires: new Date(0), // Set expires to a past date (epoch) for immediate expiration
         path: "/",
