@@ -375,7 +375,7 @@ const logoutUser = async (req, res) => {
         // Set value to empty string
         httpOnly: true,
         secure: true ,
-        sameSite: "Nome",
+        sameSite: "None",
         maxAge: 0, // Set maxAge to 0 to expire the cookie immediately
         expires: new Date(0), // Set expires to a past date (epoch) for immediate expiration
         path: "/",
@@ -587,8 +587,8 @@ const checkLoginStatus = (req, res) => {
     // To clear the cookie from the server side for an invalid token:
     res.clearCookie("token", {
       httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "strict",
+      secure: true,
+      sameSite: "None",
       path: "/",
     });
 
@@ -652,8 +652,8 @@ const checkDeviceVerificationCode = async (req, res) => {
       "Set-Cookie",
       serialize("token", token, {
         httpOnly: true, // Prevents client-side JavaScript from accessing the cookie
-        secure: process.env.NODE_ENV === "production", // Only send over HTTPS in production
-        sameSite: "strict", // Protects against CSRF attacks
+        secure: true, // Only send over HTTPS in production
+        sameSite: "None", // Protects against CSRF attacks
         maxAge: fiveHoursInSeconds, // Matches the JWT expiry (5 hours in seconds)
         path: "/", // Cookie is valid for all paths
       })
