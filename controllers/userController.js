@@ -12,6 +12,7 @@ const redis = new Redis(process.env.REDISCLOUD_URL || "redis://127.0.0.1:6379");
 const getMessage = require("../utils/messages");
 const getEmailTemplate = require("../utils/resetPasswordTemplate");
 const { getVerificationEmail } = require("../utils/emailVerificationTemplate");
+const getDeviceVerificationEmailTemplate = require("../utils/deviceVerificationTemplates");
 
 const transporter = nodemailer.createTransport({
   host: process.env.EMAIL_HOST || "sandbox.smtp.mailtrap.io",

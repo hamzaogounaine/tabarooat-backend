@@ -24,7 +24,7 @@ app.use(express.json());
 connectDb()
 app.use(express.json())
 
-app.post('/user/login' ,limitLoginMiddleware, loginUser);
+app.post('/user/login' , loginUser);
 app.post('/user/register', registerUser)
 app.post('/user/logout' , logoutUser)
 app.get('/user/verify-email', verifyEmail)
