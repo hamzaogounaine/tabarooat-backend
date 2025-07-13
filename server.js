@@ -6,6 +6,7 @@ const { loginUser, registerUser, sendResetPasswordLink, resetPassword, logoutUse
 const { loginFundraiser, registerFundraiser } = require('./controllers/raiserConrtoller')
 const { limitLoginMiddleware } = require('./middlewares/loginMiddleware')
 const cookieParser = require("cookie-parser");
+const { runUploadExample } = require('./controllers/uploadUserImages')
 const app = express()
 
 
@@ -29,6 +30,7 @@ app.post('/user/logout' , logoutUser)
 app.get('/user/verify-email', verifyEmail)
 app.post('/user/resend-verification' , resendVerification)
 app.get('/user/status' , checkLoginStatus)
+app.post('/user/upload' , runUploadExample)
 app.post('/user/verifiy-device', checkDeviceVerificationCode)
 app.post('/fundraiser/login' , loginFundraiser)
 app.post('/fundraiser/register' , registerFundraiser)
