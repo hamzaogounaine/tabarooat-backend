@@ -53,7 +53,7 @@ async function uploadLocalImageToCloudinary(imagePath, options = {}) {
 
 
 async function runUploadExample() {
-    const localImagePath = path.join(__dirname, 'icon.png'); // Adjust 'test_image.jpg' to your file name
+    const localImagePath = path.join(__dirname, 'image.png'); // Adjust 'test_image.jpg' to your file name
   
     // Example 1: Basic upload
     console.log('\n--- Running Basic Upload Example ---');

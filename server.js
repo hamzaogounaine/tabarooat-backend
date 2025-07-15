@@ -7,6 +7,9 @@ const { loginFundraiser, registerFundraiser } = require('./controllers/raiserCon
 const { limitLoginMiddleware } = require('./middlewares/loginMiddleware')
 const cookieParser = require("cookie-parser");
 const { runUploadExample } = require('./controllers/uploadUserImages')
+const { graphqlHTTP } = require('express-graphql')
+const schema = require('./schema/schema');
+
 const app = express()
 
 
@@ -36,6 +39,11 @@ app.post('/fundraiser/login' , loginFundraiser)
 app.post('/fundraiser/register' , registerFundraiser)
 app.post('/user/sendResetPasswordLink', sendResetPasswordLink)
 app.post('/user/reset-password/:token' , resetPassword)
+
+app.use('/data' , graphqlHTTP({
+  schema,
+  graphiql : process.env.NODE_ENV === 'development'
+}))
 
 const PORT = process.env.PORT || 5000; 
 
