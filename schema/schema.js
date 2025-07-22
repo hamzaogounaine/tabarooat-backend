@@ -1,69 +1,72 @@
-const {
-  GraphQLObjectType,
-  GraphQLID,
-  GraphQLString,
-  GraphQLList,
-  GraphQLSchema,
-} = require("graphql");
+const { GraphQLObjectType, GraphQLList, GraphQLString, GraphQLSchema } = require('graphql');
+const CategorieType = require('./types/categorieType');
+const Categorie = require('../models/Categorie');
+const Campaign = require('../models/Campaign');
 
-const Categorie = require("../models/Categorie");
+const CampaignType = require('./types/campaignType');
 
-const CategorieType = new GraphQLObjectType({
-  name: "Categorie",
-  fields: () => ({
-    id: { type: GraphQLID },
-    name: { type: GraphQLString },
-    origin_name: { type: GraphQLString },
-    icon: { type: GraphQLString },
-    ar_name : {type : GraphQLString},
-    fr_name : {type : GraphQLString},
-    en_name : {type : GraphQLString}
-
-  }),
-});
-
+// Define the RootQuery
 const RootQuery = new GraphQLObjectType({
-  name: "RootQueryType",
+  name: 'RootQueryType',
   fields: {
     categories: {
       type: new GraphQLList(CategorieType),
       args: {
-        lang: { type: GraphQLString },
+        lang: { type: GraphQLString }
       },
-      resolve: async (_, args) => {
-        const items = await Categorie.find();
-        return items.map((item) => ({
-          id: item._id.toString(),
-          icon: item.icon,
-          origin_name: item.name,
-          name:
-            args.lang === "ar"
-              ? item.tr.ar
-              : args.lang === "fr"
-              ? item.tr.fr
-              : item.name,
-        }));
-      },
+      resolve: async (_, { lang = 'en' }) => {
+        try {
+          const categories = await Categorie.find();
+          // Return categories with lang in _context
+          return categories.map(category => ({
+            ...category._doc,
+            _context: { lang } // Store lang for use in CategorieType
+          }));
+        } catch (error) {
+          throw new Error('Error fetching categories: ' + error.message);
+        }
+      }
     },
-    getCategorie: {
-      type: CategorieType,
-      args: { name: { type: GraphQLString } },
-      resolve: async (_, args) => {
-        const item = await Categorie.findOne({ name: args.name });
-        if (!item) return null;
 
-        return {
-          id: item._id.toString(),
-          en_name: item.name,
-          icon: item.icon,
-          ar_name: item.tr.ar,
-          fr_name : item.tr.fr
-        };
+
+    campaigns: {
+      type: new GraphQLList(CampaignType),
+      args: {
+        lang: { type: GraphQLString }
       },
+      resolve: async (_, { lang = 'en' }) => {
+        try {
+          const campaigns = await Campaign.find();
+          return campaigns.map(campaign => ({
+            ...campaign._doc,
+            _context: { lang }
+          }));
+        } catch (error) {
+          throw new Error('Error fetching campaigns: ' + error.message);
+        }
+      }
     },
-  },
+    campaignsByCategory: {
+      type: new GraphQLList(CampaignType),
+      args: {
+        categorie: { type: GraphQLString },
+        lang: { type: GraphQLString }
+      },
+      resolve: async (_, { categorie, lang = 'en' }) => {
+        try {
+          const campaigns = await Campaign.find({ categorie });
+          return campaigns.map(campaign => ({
+            ...campaign._doc,
+            _context: { lang }
+          }));
+        } catch (error) {
+          throw new Error('Error fetching campaigns by category: ' + error.message);
+        }
+      }
+    }
+  }
 });
 
 module.exports = new GraphQLSchema({
-  query: RootQuery,
+  query: RootQuery
 });

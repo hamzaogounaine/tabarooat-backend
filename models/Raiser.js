@@ -299,4 +299,4 @@ raiserSchema.methods.resetLoginAttempts = function() {
     });
 };
 
-module.exports = mongoose.model('Raiser' , raiserSchema)
+module.exports = mongoose.model("Raiser" , raiserSchema)
