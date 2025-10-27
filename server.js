@@ -9,6 +9,7 @@ const cookieParser = require("cookie-parser");
 const { runUploadExample } = require('./controllers/uploadUserImages')
 const { graphqlHTTP } = require('express-graphql')
 const schema = require('./schema/schema');
+const { createServer } = require('@graphql-yoga/node');
 
 const app = express()
 
@@ -40,10 +41,12 @@ app.post('/fundraiser/register' , registerFundraiser)
 app.post('/user/sendResetPasswordLink', sendResetPasswordLink)
 app.post('/user/reset-password/:token' , resetPassword)
 
-app.use('/data' , graphqlHTTP({
-  schema,
-  graphiql : process.env.NODE_ENV === 'development'
-}))
+const server = createServer({
+  schema, // Your existing GraphQLSchema
+  graphiql: true, // Enable GraphiQL for testing
+});
+
+app.use('/data' , server)
 
 const PORT = process.env.PORT || 5000; 
 
